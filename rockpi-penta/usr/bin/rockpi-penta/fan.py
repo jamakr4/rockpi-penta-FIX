@@ -46,25 +46,28 @@ class Pwm:
 
 
 class Gpio:
-
-    def tr(self):
-        while True:
-            self.line.set_value(1)
-            time.sleep(self.value[0])
-            self.line.set_value(0)
-            time.sleep(self.value[1])
-
     def __init__(self, period_s):
         self.line = gpiod.Chip(os.environ['FAN_CHIP']).get_line(int(os.environ['FAN_LINE']))
         self.line.request(consumer='fan', type=gpiod.LINE_REQ_DIR_OUT)
-        self.value = [period_s / 2, period_s / 2]
+        self.duty = 0.0
         self.period_s = period_s
         self.thread = threading.Thread(target=self.tr, daemon=True)
         self.thread.start()
 
+    def tr(self):
+        while True:
+            duty = self.duty
+            if duty <= 0.001:
+                self.line.set_value(0)
+                time.sleep(self.period_s)
+                continue
+            self.line.set_value(1)
+            time.sleep(duty * self.period_s)
+            self.line.set_value(0)
+            time.sleep((1.0 - duty) * self.period_s)
+
     def write(self, duty):
-        self.value[1] = duty * self.period_s
-        self.value[0] = self.period_s - self.value[1]
+        self.duty = min(1.0, max(0.0, duty))
 
 
 def read_temp():

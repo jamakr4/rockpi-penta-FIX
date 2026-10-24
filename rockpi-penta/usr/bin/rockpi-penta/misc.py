@@ -149,10 +149,12 @@ def slider_sleep():
 
 
 def fan_temp2dc(t):
-    for lv, dc in lv2dc.items():
+    # Check the thresholds from hottest to coolest.  A temperature below
+    # lv0 means the fan is off (zero duty), not almost full speed.
+    for lv, dc in (('lv3', 1.0), ('lv2', 0.75), ('lv1', 0.50), ('lv0', 0.25)):
         if t >= conf['fan'][lv]:
             return dc
-    return 0.999
+    return 0.0
 
 
 def fan_switch():
