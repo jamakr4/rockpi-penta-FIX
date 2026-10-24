@@ -83,10 +83,10 @@ def read_temp():
     if misc.conf['fan'].get('temperature_source', 'drives') == 'drives':
         disk_temps = misc.get_disk_temperatures(force=True)
         if disk_temps:
-            return max(temp for _, temp in disk_temps)
+            return max(temp for _, temp in disk_temps), 'drives'
     with open('/sys/class/thermal/thermal_zone0/temp') as f:
         t = int(f.read().strip()) / 1000.0
-    return t
+    return t, 'cpu'
 
 
 def get_dc(cache={}):
@@ -95,7 +95,8 @@ def get_dc(cache={}):
 
     if time.time() - cache.get('time', 0) > 60:
         cache['time'] = time.time()
-        cache['dc'] = misc.fan_temp2dc(read_temp())
+        temperature, source = read_temp()
+        cache['dc'] = misc.fan_temp2dc(temperature, source)
 
     return cache['dc']
 

@@ -31,7 +31,7 @@ The thresholds and curve mode are configured in `/etc/rockpi-penta.conf`. By def
 
 Set `linear = true` in `[fan]` to instead ramp continuously from 25% at `lv0` to 100% at `lv3`. In this mode, `lv1` and `lv2` do not affect the curve. Below `lv0`, the fan remains off in either mode.
 
-Set `temperature_source = drives` in `[fan]` to control the fan from the hottest available SMART drive temperature. If no drives are connected or no drive SMART temperature is available, it falls back to CPU temperature. Set `temperature_source = cpu` to use CPU temperature only.
+The `[fan]` section has separate temperature curves: `lv0`–`lv3` are used for CPU temperature, while `drive_lv0`–`drive_lv3` are used for the hottest available SMART drive. In `temperature_source = drives` mode, the fan falls back to CPU temperature and its `lv0`–`lv3` curve if no drives are connected or no SMART temperature is available. Set `temperature_source = cpu` to use CPU temperature only. Both curves work with stepped or linear mode.
 
 Tune the thresholds for the selected temperature source and cooling setup.
 

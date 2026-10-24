@@ -62,6 +62,10 @@ def read_conf():
         conf['fan']['lv1'] = cfg.getfloat('fan', 'lv1')
         conf['fan']['lv2'] = cfg.getfloat('fan', 'lv2')
         conf['fan']['lv3'] = cfg.getfloat('fan', 'lv3')
+        conf['fan']['drive_lv0'] = cfg.getfloat('fan', 'drive_lv0', fallback=conf['fan']['lv0'])
+        conf['fan']['drive_lv1'] = cfg.getfloat('fan', 'drive_lv1', fallback=conf['fan']['lv1'])
+        conf['fan']['drive_lv2'] = cfg.getfloat('fan', 'drive_lv2', fallback=conf['fan']['lv2'])
+        conf['fan']['drive_lv3'] = cfg.getfloat('fan', 'drive_lv3', fallback=conf['fan']['lv3'])
         conf['fan']['linear'] = cfg.getboolean('fan', 'linear', fallback=False)
         conf['fan']['temperature_source'] = cfg.get(
             'fan', 'temperature_source', fallback='drives').strip().lower()
@@ -117,10 +121,14 @@ def read_conf():
     except Exception:
         traceback.print_exc()
         # fan
-        conf['fan']['lv0'] = 35
-        conf['fan']['lv1'] = 40
-        conf['fan']['lv2'] = 45
-        conf['fan']['lv3'] = 50
+        conf['fan']['lv0'] = 55
+        conf['fan']['lv1'] = 65
+        conf['fan']['lv2'] = 75
+        conf['fan']['lv3'] = 85
+        conf['fan']['drive_lv0'] = 35
+        conf['fan']['drive_lv1'] = 40
+        conf['fan']['drive_lv2'] = 45
+        conf['fan']['drive_lv3'] = 50
         conf['fan']['linear'] = False
         conf['fan']['temperature_source'] = 'drives'
         # key
@@ -519,22 +527,24 @@ def get_refresh_period():
     return max(0.0, conf['slider'].get('refresh', 1.0))
 
 
-def fan_temp2dc(t):
-    # lv0 is the turn-on threshold in both modes.
-    if t < conf['fan']['lv0']:
+def fan_temp2dc(t, source='cpu'):
+    # CPU and drive temperatures use independent curves.
+    prefix = 'drive_' if source == 'drives' else ''
+    thresholds = {lv: conf['fan'][prefix + lv] for lv in ('lv0', 'lv1', 'lv2', 'lv3')}
+    if t < thresholds['lv0']:
         return 0.0
 
     if conf['fan']['linear']:
-        # Ramp smoothly from 25% at lv0 to 100% at lv3.
-        low_temp = conf['fan']['lv0']
-        high_temp = conf['fan']['lv3']
+        # Ramp smoothly from 25% at the source's lv0 to 100% at lv3.
+        low_temp = thresholds['lv0']
+        high_temp = thresholds['lv3']
         if high_temp <= low_temp:
             return 1.0
         return min(1.0, 0.25 + 0.75 * (t - low_temp) / (high_temp - low_temp))
 
     # Stepped mode: 25%, 50%, 75%, then 100% at each configured threshold.
     for lv, dc in lv2dc.items():
-        if t >= conf['fan'][lv]:
+        if t >= thresholds[lv]:
             return dc
     return 0.0
 
