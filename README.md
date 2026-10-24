@@ -61,6 +61,20 @@ Apply changes with:
 sudo systemctl restart rockpi-penta.service
 ```
 
+## Update an existing installation
+
+Run these commands on the Raspberry Pi from the cloned fork directory:
+
+```sh
+cd ~/rockpi-penta-FIX
+git pull --ff-only
+sudo ./install.sh
+sudo nano /etc/rockpi-penta.conf
+
+sudo systemctl restart rockpi-penta.service
+sudo systemctl status rockpi-penta.service
+```
+
 ## Build and install
 
 From the repository root, build and install the Debian package together with `smartmontools`:
