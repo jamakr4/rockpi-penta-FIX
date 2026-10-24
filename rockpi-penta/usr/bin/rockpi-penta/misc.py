@@ -22,7 +22,7 @@ cmds = {
     'disk': "df -h | awk '$NF==\"/\"{printf \"Disk: %d/%dGB %s\", $3,$2,$5}'"
 }
 
-lv2dc = OrderedDict({'lv3': 0, 'lv2': 0.25, 'lv1': 0.5, 'lv0': 0.75})
+lv2dc = OrderedDict({'lv3': 1.0, 'lv2': 0.75, 'lv1': 0.50, 'lv0': 0.25})
 
 
 def check_output(cmd):
@@ -61,6 +61,7 @@ def read_conf():
         conf['fan']['lv1'] = cfg.getfloat('fan', 'lv1')
         conf['fan']['lv2'] = cfg.getfloat('fan', 'lv2')
         conf['fan']['lv3'] = cfg.getfloat('fan', 'lv3')
+        conf['fan']['linear'] = cfg.getboolean('fan', 'linear', fallback=False)
         # key
         conf['key']['click'] = cfg.get('key', 'click')
         conf['key']['twice'] = cfg.get('key', 'twice')
@@ -90,6 +91,7 @@ def read_conf():
         conf['fan']['lv1'] = 40
         conf['fan']['lv2'] = 45
         conf['fan']['lv3'] = 50
+        conf['fan']['linear'] = False
         # key
         conf['key']['click'] = 'slider'
         conf['key']['twice'] = 'switch'
@@ -292,9 +294,20 @@ def get_refresh_period():
 
 
 def fan_temp2dc(t):
-    # Check the thresholds from hottest to coolest.  A temperature below
-    # lv0 means the fan is off (zero duty), not almost full speed.
-    for lv, dc in (('lv3', 1.0), ('lv2', 0.75), ('lv1', 0.50), ('lv0', 0.25)):
+    # lv0 is the turn-on threshold in both modes.
+    if t < conf['fan']['lv0']:
+        return 0.0
+
+    if conf['fan']['linear']:
+        # Ramp smoothly from 25% at lv0 to 100% at lv3.
+        low_temp = conf['fan']['lv0']
+        high_temp = conf['fan']['lv3']
+        if high_temp <= low_temp:
+            return 1.0
+        return min(1.0, 0.25 + 0.75 * (t - low_temp) / (high_temp - low_temp))
+
+    # Stepped mode: 25%, 50%, 75%, then 100% at each configured threshold.
+    for lv, dc in lv2dc.items():
         if t >= conf['fan'][lv]:
             return dc
     return 0.0

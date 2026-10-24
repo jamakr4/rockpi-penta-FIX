@@ -18,7 +18,7 @@ For hardware information, see the [Radxa Penta SATA HAT documentation](https://d
 
 ## Fan curve
 
-The thresholds are configured in `/etc/rockpi-penta.conf`. The default curve is:
+The thresholds and curve mode are configured in `/etc/rockpi-penta.conf`. By default, the fan uses four fixed steps:
 
 | Temperature | Fan duty |
 | --- | ---: |
@@ -27,6 +27,8 @@ The thresholds are configured in `/etc/rockpi-penta.conf`. The default curve is:
 | At or above `lv1` | 50% |
 | At or above `lv2` | 75% |
 | At or above `lv3` | 100% |
+
+Set `linear = true` in `[fan]` to instead ramp continuously from 25% at `lv0` to 100% at `lv3`. In this mode, `lv1` and `lv2` do not affect the curve. Below `lv0`, the fan remains off in either mode.
 
 With drive temperature control enabled, tune these thresholds for the disks and cooling setup. If SMART data is unavailable, the controller uses CPU temperature instead.
 
@@ -94,5 +96,5 @@ The `gpiod` v2 changes target Raspberry Pi OS / Debian Trixie on Raspberry Pi 5.
 This fork includes adapted fixes and ideas from:
 
 - [radxa/rockpi-penta PR #15](https://github.com/radxa/rockpi-penta/pull/15) — fan duty handling and the correct off behavior below `lv0`.
-- [radxa/rockpi-penta PR #1](https://github.com/radxa/rockpi-penta/pull/1) — expanded OLED information and periodic display updates.
+- [radxa/rockpi-penta PR #1](https://github.com/radxa/rockpi-penta/pull/1) — expanded OLED information, periodic display updates, and the basis for the configurable linear fan curve.
 - [HabiRabbu/rockpi-penta-pi5-fix](https://github.com/HabiRabbu/rockpi-penta-pi5-fix), especially [commit 46f937c](https://github.com/HabiRabbu/rockpi-penta-pi5-fix/commit/46f937ccd3af6da4f68c2b7f77d74e1053918dd1) — `gpiod` v2 support and SMART-based drive temperature fan control.
