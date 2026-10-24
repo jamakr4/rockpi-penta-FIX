@@ -84,6 +84,13 @@ def read_conf():
         conf['disk']['disks_temp'] = cfg.getboolean('disk', 'disks_temp', fallback=True)
         conf['network']['interfaces'] = _split_list(
             cfg.get('network', 'interfaces', fallback='auto'))
+        # Persistent OLED warnings; each check can be toggled independently.
+        conf['warnings']['enabled'] = cfg.getboolean('Warnings', 'enabled', fallback=True)
+        conf['warnings']['smart_health'] = cfg.getboolean('Warnings', 'smart_health', fallback=True)
+        conf['warnings']['disk_temperature'] = cfg.getboolean('Warnings', 'disk_temperature', fallback=True)
+        conf['warnings']['disk_temp_limit'] = cfg.getfloat('Warnings', 'disk_temp_limit', fallback=55.0)
+        conf['warnings']['cpu_temperature'] = cfg.getboolean('Warnings', 'cpu_temperature', fallback=False)
+        conf['warnings']['cpu_temp_limit'] = cfg.getfloat('Warnings', 'cpu_temp_limit', fallback=85.0)
     except Exception:
         traceback.print_exc()
         # fan
@@ -110,6 +117,12 @@ def read_conf():
         conf['disk']['io_usage_mnt_points'] = []
         conf['disk']['disks_temp'] = True
         conf['network']['interfaces'] = ['auto']
+        conf['warnings']['enabled'] = True
+        conf['warnings']['smart_health'] = True
+        conf['warnings']['disk_temperature'] = True
+        conf['warnings']['disk_temp_limit'] = 55.0
+        conf['warnings']['cpu_temperature'] = False
+        conf['warnings']['cpu_temp_limit'] = 85.0
 
     return conf
 
@@ -249,35 +262,103 @@ def get_disk_temperatures(force=False):
     """Read temperatures from detected block devices when smartctl is available."""
     if not conf['disk']['disks_temp'] and not force:
         return []
-    if time.time() - _temp_cache.get('time', 0) < 30:
-        return _temp_cache.get('temperatures', [])
+    temperatures = []
+    for device, data in get_disk_smart_data():
+        temp = data.get('temperature', {}).get('current')
+        if temp is None:
+            for attr in data.get('ata_smart_attributes', {}).get('table', []):
+                if attr.get('name') in ('Temperature_Celsius', 'Airflow_Temperature_Cel'):
+                    temp = attr.get('raw', {}).get('value')
+                    break
+        if temp is not None:
+            try:
+                temperatures.append((device, float(temp)))
+            except (TypeError, ValueError):
+                continue
+    return temperatures
+
+
+def get_disk_smart_data():
+    """Return cached SMART JSON for detected disks when smartctl is available."""
+    if time.time() - _smart_cache.get('time', 0) < 30:
+        return _smart_cache.get('disks', [])
     try:
         devices = check_output("lsblk -dnpo NAME,TYPE | awk '$2==\"disk\"{print $1}'").splitlines()
     except subprocess.CalledProcessError:
         return []
-    temperatures = []
+    disks = []
     for device in devices:
         try:
-            result = subprocess.run(['smartctl', '-A', '-j', device], check=False,
+            result = subprocess.run(['smartctl', '-a', '-j', device], check=False,
                                     capture_output=True, text=True, timeout=5)
             data = json.loads(result.stdout)
-            temp = data.get('temperature', {}).get('current')
-            if temp is None:
-                for attr in data.get('ata_smart_attributes', {}).get('table', []):
-                    if attr.get('name') in ('Temperature_Celsius', 'Airflow_Temperature_Cel'):
-                        temp = attr.get('raw', {}).get('value')
-                        break
-            if temp is not None:
-                temperatures.append((os.path.basename(device), float(temp)))
+            disks.append((os.path.basename(device), data))
         except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
             continue
-    _temp_cache['time'] = time.time()
-    _temp_cache['temperatures'] = temperatures
-    return temperatures
+    _smart_cache['time'] = time.time()
+    _smart_cache['disks'] = disks
+    return disks
+
+
+def get_warnings():
+    """Return active configured warnings for the OLED warning page."""
+    options = conf['warnings']
+    if not options.get('enabled', True):
+        return []
+
+    warnings = []
+    if options.get('smart_health', True):
+        for device, data in get_disk_smart_data():
+            health = data.get('smart_status', {}).get('passed')
+            if health is False:
+                warnings.append(f'{device} SMART FAIL')
+            concerning_attributes = {
+                'Reallocated_Sector_Ct': 'reallocated sectors',
+                'Current_Pending_Sector': 'pending sectors',
+                'Offline_Uncorrectable': 'uncorrectable sectors',
+            }
+            for attribute in data.get('ata_smart_attributes', {}).get('table', []):
+                label = concerning_attributes.get(attribute.get('name'))
+                raw_value = attribute.get('raw', {}).get('value', 0)
+                try:
+                    if label and int(raw_value) > 0:
+                        warnings.append(f'{device} {label}')
+                except (TypeError, ValueError):
+                    continue
+            nvme = data.get('nvme_smart_health_information_log', {})
+            critical_warning = nvme.get('critical_warning', 0)
+            try:
+                if int(critical_warning) != 0:
+                    warnings.append(f'{device} NVMe ALERT')
+            except (TypeError, ValueError):
+                pass
+            try:
+                if int(nvme.get('media_errors', 0)) > 0:
+                    warnings.append(f'{device} media errors')
+            except (TypeError, ValueError):
+                pass
+
+    if options.get('disk_temperature', True):
+        limit = options.get('disk_temp_limit', 55.0)
+        for device, temp in get_disk_temperatures(force=True):
+            if temp >= limit:
+                warnings.append(f'{device} temp {temp:.0f}C >{limit:.0f}C')
+
+    if options.get('cpu_temperature', False):
+        try:
+            with open('/sys/class/thermal/thermal_zone0/temp') as thermal:
+                temp = float(thermal.read().strip()) / 1000.0
+            limit = options.get('cpu_temp_limit', 85.0)
+            if temp >= limit:
+                warnings.append(f'CPU temp {temp:.0f}C >{limit:.0f}C')
+        except (OSError, ValueError):
+            pass
+
+    return warnings
 
 
 _io_cache = {}
-_temp_cache = {}
+_smart_cache = {}
 
 
 def slider_next(pages):

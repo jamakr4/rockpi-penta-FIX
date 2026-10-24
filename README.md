@@ -13,6 +13,7 @@ For hardware information, see the [Radxa Penta SATA HAT documentation](https://d
 - **Debian Trixie / Raspberry Pi 5 GPIO support.** Fan output and button input use the `gpiod` v2 API.
 - **Drive temperature fan control.** When SMART temperatures are available, the fan follows the hottest detected disk temperature. It falls back to CPU temperature when no disk temperature is available. The package recommends `smartmontools` for this feature.
 - **More OLED pages.** The display can show configured mountpoint usage, disk read/write rates, network receive/transmit rates, and detected disk temperatures, alongside the existing system information.
+- **Persistent warning page.** Failed SMART health, reallocated/pending/uncorrectable sectors, NVMe critical warnings or media errors, and configurable disk or CPU temperature limits can take priority over normal OLED pages until the warning clears. The `WARNING` header blinks while active. Each check can be enabled independently in `[Warnings]`.
 - **Configurable data sources.** Choose mountpoints and network interfaces in `rockpi-penta.conf`; `interfaces = auto` selects all interfaces except loopback.
 - **Independent OLED updates.** Separate timer processes request automatic page changes and periodic data refreshes. One display worker serializes OLED writes to avoid overlapping I²C access. Set the refresh interval with `slider.refresh`.
 
@@ -56,6 +57,20 @@ brightness = 128
 
 Mountpoint and interface lists use `|` separators. Set `io_usage_mnt_points` to an empty value to hide disk I/O pages, or set `disks_temp = false` to hide the OLED temperature page. SMART-based fan control still uses drive temperatures when available.
 `oled.brightness` sets the SSD1306 contrast from `0` (minimum) to `255` (maximum); restart the service after changing it.
+
+Warnings are configured independently:
+
+```ini
+[Warnings]
+enabled = true
+smart_health = true
+disk_temperature = true
+disk_temp_limit = 55
+cpu_temperature = false
+cpu_temp_limit = 85
+```
+
+When enabled, the warning page stays visible until all active conditions clear. SMART and disk temperature warnings require supported drives and `smartmontools`.
 
 Apply changes with:
 

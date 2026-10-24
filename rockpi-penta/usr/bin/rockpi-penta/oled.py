@@ -2,6 +2,7 @@
 import os
 import time
 import multiprocessing as mp
+import queue
 
 import adafruit_ssd1306
 import board
@@ -44,6 +45,21 @@ def disp_show():
     disp.image(im)
     disp.write_framebuf()
     draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
+
+
+def show_warnings(warnings, header_visible=True):
+    """Keep an active warning page visible until all warnings clear."""
+    if header_visible:
+        draw.text((0, -2), '!! WARNING !!', font=font['11'], fill=255)
+    if len(warnings) == 1:
+        draw.text((0, 10), warnings[0][:21], font=font['11'], fill=255)
+    else:
+        draw.text((0, 10), warnings[0][:21], font=font['11'], fill=255)
+        second_warning = warnings[1]
+        if len(warnings) > 2:
+            second_warning = second_warning[:14] + ' +{}'.format(len(warnings) - 2)
+        draw.text((0, 21), second_warning[:21], font=font['11'], fill=255)
+    disp_show()
 
 
 def welcome():
@@ -144,9 +160,23 @@ def refresh_display(display_queue_arg=None):
 def display_process(display_queue_arg=None):
     """Serialize page changes and data refreshes on the OLED device."""
     current_page = 0
+    warning_active = False
     while True:
-        action = display_queue.get()
         try:
+            action = display_queue.get(timeout=0.5)
+        except queue.Empty:
+            if not warning_active:
+                continue
+            action = 'warning_blink'
+        try:
+            warnings = misc.get_warnings()
+            if warnings:
+                warning_active = True
+                header_visible = int(time.monotonic() / 0.5) % 2 == 0
+                show_warnings(warnings, header_visible)
+                continue
+
+            warning_active = False
             pages = gen_pages()
             if not pages:
                 continue
