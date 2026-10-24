@@ -71,6 +71,7 @@ def read_conf():
         # other
         conf['slider']['auto'] = cfg.getboolean('slider', 'auto')
         conf['slider']['time'] = cfg.getfloat('slider', 'time')
+        conf['slider']['refresh'] = cfg.getfloat('slider', 'refresh', fallback=1.0)
         conf['oled']['rotate'] = cfg.getboolean('oled', 'rotate')
         conf['oled']['f-temp'] = cfg.getboolean('oled', 'f-temp')
         # Optional OLED sources. Empty lists disable the corresponding pages.
@@ -98,6 +99,7 @@ def read_conf():
         # other
         conf['slider']['auto'] = True
         conf['slider']['time'] = 10  # second
+        conf['slider']['refresh'] = 1.0
         conf['oled']['rotate'] = False
         conf['oled']['f-temp'] = False
         conf['disk']['space_usage_mnt_points'] = ['/']
@@ -280,6 +282,10 @@ def slider_next(pages):
 
 def slider_sleep():
     time.sleep(conf['slider']['time'])
+
+
+def get_refresh_period():
+    return max(0.0, conf['slider'].get('refresh', 1.0))
 
 
 def fan_temp2dc(t):

@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import os
 import time
+import multiprocessing as mp
 
 import adafruit_ssd1306
 import board
@@ -9,7 +10,6 @@ import busio
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
-import multiprocessing as mp
 
 import misc
 
@@ -19,6 +19,8 @@ font = {
     '12': ImageFont.truetype('fonts/DejaVuSansMono-Bold.ttf', 12),
     '14': ImageFont.truetype('fonts/DejaVuSansMono-Bold.ttf', 14),
 }
+
+display_queue = mp.Queue()
 
 
 def disp_init():
@@ -113,24 +115,55 @@ def gen_pages():
     return pages
 
 
-def slider(lock):
-    with lock:
-        pages = gen_pages()
-        for item in pages[misc.conf['idx'].value % len(pages)]:
-            draw.text(**item)
-        disp_show()
-        misc.conf['idx'].value += 1
+def slider(lock=None):
+    """Queue a page advance; the display worker owns all OLED drawing."""
+    display_queue.put('next')
 
 
-def auto_slider(lock):
-    while misc.conf['slider']['auto']:
-        slider(lock)
-        misc.slider_sleep()
-    else:
-        slider(lock)
+def auto_slider(lock=None):
+    while True:
+        if misc.conf['slider']['auto']:
+            misc.slider_sleep()
+            slider()
+        else:
+            time.sleep(0.1)
+
+
+def refresh_display(display_queue_arg=None):
+    """Request periodic redraws without changing the current page."""
+    while True:
+        period = misc.get_refresh_period()
+        if period:
+            time.sleep(period)
+            display_queue.put('refresh')
+        else:
+            time.sleep(0.1)
+
+
+def display_process(display_queue_arg=None):
+    """Serialize page changes and data refreshes on the OLED device."""
+    current_page = 0
+    while True:
+        action = display_queue.get()
+        try:
+            pages = gen_pages()
+            if not pages:
+                continue
+            if action == 'next':
+                current_page = (current_page + 1) % len(pages)
+            else:
+                current_page %= len(pages)
+            for item in pages[current_page]:
+                draw.text(**item)
+            disp_show()
+        except Exception as exc:
+            print('OLED update failed:', exc)
 
 
 if __name__ == '__main__':
-    # for test
-    lock = mp.Lock()
-    auto_slider(lock)
+    # For standalone use, run the display worker and its independent timers.
+    import threading
+    display_queue.put('refresh')
+    threading.Thread(target=display_process, daemon=True).start()
+    threading.Thread(target=auto_slider, daemon=True).start()
+    refresh_display()

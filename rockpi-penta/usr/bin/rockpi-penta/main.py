@@ -2,6 +2,7 @@
 import queue
 import threading
 import traceback
+import multiprocessing as mp
 
 import fan
 import misc
@@ -15,11 +16,9 @@ except Exception as ex:
     top_board = False
 
 q = queue.Queue()
-lock = threading.Lock()
-
 action = {
     'none': lambda: 'nothing',
-    'slider': lambda: oled.slider(lock),
+    'slider': lambda: oled.slider(),
     'switch': lambda: misc.fan_switch(),
     'reboot': lambda: misc.check_call('reboot'),
     'poweroff': lambda: misc.check_call('poweroff'),
@@ -36,14 +35,23 @@ if __name__ == '__main__':
 
     if top_board:
         oled.welcome()
+        # The timer processes only enqueue requests. The display worker stays
+        # in this process so the OLED/I2C device has a single owner.
+        p_refresh = mp.Process(target=oled.refresh_display, daemon=True)
+        p_auto = mp.Process(target=oled.auto_slider, daemon=True)
+        p_refresh.start()
+        p_auto.start()
+
+        p2 = threading.Thread(target=oled.display_process, daemon=True)
+        p2.start()
+        oled.display_queue.put('refresh')
+
         p0 = threading.Thread(target=receive_key, args=(q,), daemon=True)
         p1 = threading.Thread(target=misc.watch_key, args=(q,), daemon=True)
-        p2 = threading.Thread(target=oled.auto_slider, args=(lock,), daemon=True)
         p3 = threading.Thread(target=fan.running, daemon=True)
 
         p0.start()
         p1.start()
-        p2.start()
         p3.start()
         try:
             p3.join()
