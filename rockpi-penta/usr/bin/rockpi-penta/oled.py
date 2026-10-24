@@ -53,8 +53,19 @@ def show_warnings(warnings, header_visible=True, offset=0):
         draw.text((0, -2), '!! WARNING !!', font=font['11'], fill=255)
     visible_warnings = [warnings[(offset + index) % len(warnings)]
                         for index in range(min(2, len(warnings)))]
+    now = time.monotonic()
     for index, warning in enumerate(visible_warnings):
-        draw.text((0, 10 + index * 11), warning[:21], font=font['11'], fill=255)
+        y = 10 + index * 11
+        text_width = draw.textbbox((0, y), warning, font=font['11'])[2]
+        if text_width <= disp.width:
+            draw.text((0, y), warning, font=font['11'], fill=255)
+            continue
+
+        # Repeat the text after a short gap to create a continuous marquee.
+        cycle_width = text_width + 24
+        scroll_x = int(now * 32) % cycle_width
+        draw.text((-scroll_x, y), warning, font=font['11'], fill=255)
+        draw.text((cycle_width - scroll_x, y), warning, font=font['11'], fill=255)
     disp_show()
 
 
@@ -159,7 +170,7 @@ def display_process(display_queue_arg=None):
     warning_active = False
     while True:
         try:
-            action = display_queue.get(timeout=0.5)
+            action = display_queue.get(timeout=0.25)
         except queue.Empty:
             if not warning_active:
                 continue
@@ -170,7 +181,7 @@ def display_process(display_queue_arg=None):
                 warning_active = True
                 now = time.monotonic()
                 header_visible = int(now / 0.5) % 2 == 0
-                warning_offset = int(now / 2) % len(warnings)
+                warning_offset = int(now / 8) % len(warnings)
                 show_warnings(warnings, header_visible, warning_offset)
                 continue
 
