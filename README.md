@@ -47,9 +47,13 @@ disks_temp = true
 
 [network]
 interfaces = auto
+
+[oled]
+brightness = 128
 ```
 
 Mountpoint and interface lists use `|` separators. Set `io_usage_mnt_points` to an empty value to hide disk I/O pages, or set `disks_temp = false` to hide the OLED temperature page. SMART-based fan control still uses drive temperatures when available.
+`oled.brightness` sets the SSD1306 contrast from `0` (minimum) to `255` (maximum); restart the service after changing it.
 
 Apply changes with:
 

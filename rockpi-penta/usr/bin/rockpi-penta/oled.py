@@ -27,6 +27,7 @@ def disp_init():
     RESET = getattr(board.pin, os.environ['OLED_RESET'])
     i2c = busio.I2C(getattr(board.pin, os.environ['SCL']), getattr(board.pin, os.environ['SDA']))
     disp = adafruit_ssd1306.SSD1306_I2C(128, 32, i2c, reset=digitalio.DigitalInOut(RESET))
+    disp.contrast(misc.conf['oled']['brightness'])
     disp.fill(0)
     disp.show()
     return disp
