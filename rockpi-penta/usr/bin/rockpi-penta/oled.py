@@ -47,18 +47,14 @@ def disp_show():
     draw.rectangle((0, 0, disp.width, disp.height), outline=0, fill=0)
 
 
-def show_warnings(warnings, header_visible=True):
+def show_warnings(warnings, header_visible=True, offset=0):
     """Keep an active warning page visible until all warnings clear."""
     if header_visible:
         draw.text((0, -2), '!! WARNING !!', font=font['11'], fill=255)
-    if len(warnings) == 1:
-        draw.text((0, 10), warnings[0][:21], font=font['11'], fill=255)
-    else:
-        draw.text((0, 10), warnings[0][:21], font=font['11'], fill=255)
-        second_warning = warnings[1]
-        if len(warnings) > 2:
-            second_warning = second_warning[:14] + ' +{}'.format(len(warnings) - 2)
-        draw.text((0, 21), second_warning[:21], font=font['11'], fill=255)
+    visible_warnings = [warnings[(offset + index) % len(warnings)]
+                        for index in range(min(2, len(warnings)))]
+    for index, warning in enumerate(visible_warnings):
+        draw.text((0, 10 + index * 11), warning[:21], font=font['11'], fill=255)
     disp_show()
 
 
@@ -172,8 +168,10 @@ def display_process(display_queue_arg=None):
             warnings = misc.get_warnings()
             if warnings:
                 warning_active = True
-                header_visible = int(time.monotonic() / 0.5) % 2 == 0
-                show_warnings(warnings, header_visible)
+                now = time.monotonic()
+                header_visible = int(now / 0.5) % 2 == 0
+                warning_offset = int(now / 2) % len(warnings)
+                show_warnings(warnings, header_visible, warning_offset)
                 continue
 
             warning_active = False
