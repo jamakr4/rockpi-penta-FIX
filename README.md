@@ -44,8 +44,8 @@ time = 10
 refresh = 1.0
 
 [disk]
-space_usage_mnt_points = /|/mnt/storage
-io_usage_mnt_points = /mnt/storage
+space_usage_mnt_points = /|/srv/dev-disk-by-uuid-69FC-D875
+io_usage_mnt_points =
 disks_temp = true
 
 [network]
@@ -55,7 +55,7 @@ interfaces = auto
 brightness = 128
 ```
 
-Mountpoint and interface lists use `|` separators. Set `io_usage_mnt_points` to an empty value to hide disk I/O pages, or set `disks_temp = false` to hide the OLED temperature page. SMART-based fan control still uses drive temperatures when available.
+Mountpoint and interface lists use `|` separators. Use the filesystem `TARGET` reported by `findmnt -S /dev/sda2` as the mountpoint; the path above matches the example disk setup and should be replaced with your own target if it differs. `space_usage_mnt_points` controls the OLED capacity page and the `disk_usage_limit` warning. Set `io_usage_mnt_points` to an empty value to hide disk I/O pages, or list mountpoints there to show read/write rates. Set `disks_temp = false` to hide the OLED temperature page. SMART-based fan control still uses drive temperatures when available.
 `oled.brightness` sets the SSD1306 contrast from `0` (minimum) to `255` (maximum); restart the service after changing it.
 
 Warnings are configured independently:
