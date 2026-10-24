@@ -87,6 +87,10 @@ def read_conf():
             cfg.get('network', 'interfaces', fallback='auto'))
         # Persistent OLED warnings; each check can be toggled independently.
         conf['warnings']['enabled'] = cfg.getboolean('Warnings', 'enabled', fallback=True)
+        conf['warnings']['showwarningcount'] = cfg.getboolean(
+            'Warnings', 'showwarningcount', fallback=True)
+        conf['warnings']['warningcountinverted'] = cfg.getboolean(
+            'Warnings', 'warningcountinverted', fallback=False)
         conf['warnings']['smart_health'] = cfg.getboolean('Warnings', 'smart_health', fallback=True)
         conf['warnings']['disk_temperature'] = cfg.getboolean('Warnings', 'disk_temperature', fallback=True)
         conf['warnings']['disk_temp_limit'] = cfg.getfloat('Warnings', 'disk_temp_limit', fallback=55.0)
@@ -132,6 +136,8 @@ def read_conf():
         conf['disk']['disks_temp'] = True
         conf['network']['interfaces'] = ['auto']
         conf['warnings']['enabled'] = True
+        conf['warnings']['showwarningcount'] = True
+        conf['warnings']['warningcountinverted'] = False
         conf['warnings']['smart_health'] = True
         conf['warnings']['disk_temperature'] = True
         conf['warnings']['disk_temp_limit'] = 55.0

@@ -63,6 +63,8 @@ Warnings are configured independently:
 ```ini
 [Warnings]
 enabled = true
+showwarningcount = true
+warningcountinverted = false
 smart_health = true
 disk_temperature = true
 disk_temp_limit = 55
@@ -81,7 +83,7 @@ network_target = 1.1.1.1
 network_latency_limit_ms = 100
 ```
 
-When enabled, the warning page stays visible until all active conditions clear. SMART and disk temperature warnings require supported drives and `smartmontools`. Network link and negotiated-speed checks apply to the listed interfaces. Latency checks ping the configured target, so choose a stable local gateway if you want to avoid dependence on an external host. The installer installs `iputils-ping` for this check.
+When enabled, the warning page stays visible until all active conditions clear. `showwarningcount` toggles the count badge; `warningcountinverted` draws it as a filled box with a cut-out number. Counts of ten or more appear as `9+`. SMART and disk temperature warnings require supported drives and `smartmontools`. Network link and negotiated-speed checks apply to the listed interfaces. Latency checks ping the configured target, so choose a stable local gateway if you want to avoid dependence on an external host. The installer installs `iputils-ping` for this check.
 
 Apply changes with:
 

@@ -51,10 +51,15 @@ def show_warnings(warnings, header_visible=True, offset=0):
     """Keep an active warning page visible until all warnings clear."""
     if header_visible:
         draw.text((0, -2), '!! WARNING !!', font=font['11'], fill=255)
-    warning_count = '9+' if len(warnings) >= 10 else str(len(warnings))
-    count_width = draw.textbbox((0, -2), warning_count, font=font['11'])[2]
-    draw.text((disp.width - count_width, -2), warning_count,
-              font=font['11'], fill=255)
+    if misc.conf['warnings'].get('showwarningcount', True):
+        warning_count = '9+' if len(warnings) >= 10 else str(len(warnings))
+        count_width = draw.textbbox((0, -2), warning_count, font=font['11'])[2]
+        count_x = disp.width - count_width
+        if misc.conf['warnings'].get('warningcountinverted', False):
+            draw.rectangle((count_x - 2, -2, disp.width - 1, 9), fill=255)
+            draw.text((count_x, -2), warning_count, font=font['11'], fill=0)
+        else:
+            draw.text((count_x, -2), warning_count, font=font['11'], fill=255)
     visible_warnings = [warnings[(offset + index) % len(warnings)]
                         for index in range(min(2, len(warnings)))]
     now = time.monotonic()
