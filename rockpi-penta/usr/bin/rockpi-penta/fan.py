@@ -78,11 +78,12 @@ class Gpio:
 
 
 def read_temp():
-    # Use the hottest detected drive temperature, falling back to CPU temp
-    # when SMART data is unavailable.
-    disk_temps = misc.get_disk_temperatures(force=True)
-    if disk_temps:
-        return max(temp for _, temp in disk_temps)
+    # Use the configured temperature source. Drive mode falls back to CPU
+    # temperature when SMART data is unavailable.
+    if misc.conf['fan'].get('temperature_source', 'drives') == 'drives':
+        disk_temps = misc.get_disk_temperatures(force=True)
+        if disk_temps:
+            return max(temp for _, temp in disk_temps)
     with open('/sys/class/thermal/thermal_zone0/temp') as f:
         t = int(f.read().strip()) / 1000.0
     return t

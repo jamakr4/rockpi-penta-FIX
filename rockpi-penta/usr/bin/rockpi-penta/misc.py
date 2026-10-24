@@ -63,6 +63,11 @@ def read_conf():
         conf['fan']['lv2'] = cfg.getfloat('fan', 'lv2')
         conf['fan']['lv3'] = cfg.getfloat('fan', 'lv3')
         conf['fan']['linear'] = cfg.getboolean('fan', 'linear', fallback=False)
+        conf['fan']['temperature_source'] = cfg.get(
+            'fan', 'temperature_source', fallback='drives').strip().lower()
+        if conf['fan']['temperature_source'] not in ('cpu', 'drives'):
+            print('Invalid fan temperature_source; using drives')
+            conf['fan']['temperature_source'] = 'drives'
         # key
         conf['key']['click'] = cfg.get('key', 'click')
         conf['key']['twice'] = cfg.get('key', 'twice')
@@ -117,6 +122,7 @@ def read_conf():
         conf['fan']['lv2'] = 45
         conf['fan']['lv3'] = 50
         conf['fan']['linear'] = False
+        conf['fan']['temperature_source'] = 'drives'
         # key
         conf['key']['click'] = 'slider'
         conf['key']['twice'] = 'switch'

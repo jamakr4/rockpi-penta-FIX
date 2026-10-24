@@ -11,7 +11,7 @@ For hardware information, see the [Radxa Penta SATA HAT documentation](https://d
 - **Fan really turns off below `lv0`.** Temperatures below the first threshold request 0% duty instead of almost 100%.
 - **Correct fan PWM duty.** GPIO PWM uses the requested duty as the high time and holds the output low at 0%, preventing the brief start/stop cycle. Duty values are clamped to the 0–100% range.
 - **Debian Trixie / Raspberry Pi 5 GPIO support.** Fan output and button input use the `gpiod` v2 API.
-- **Drive temperature fan control.** When SMART temperatures are available, the fan follows the hottest detected disk temperature. It falls back to CPU temperature when no disk temperature is available. The package recommends `smartmontools` for this feature.
+- **Configurable fan temperature source.** Set `temperature_source = drives` to follow the hottest SMART drive temperature (falling back to CPU temperature if unavailable), or `temperature_source = cpu` to use the CPU exclusively. The package recommends `smartmontools` for drive temperatures.
 - **More OLED pages.** The display can show configured mountpoint usage, disk read/write rates, network receive/transmit rates, and detected disk temperatures, alongside the existing system information.
 - **Persistent warning page.** Failed SMART health, reallocated/pending/uncorrectable sectors, NVMe critical warnings or media errors, hot drives, full or missing mounts, degraded Linux RAID, and optional CPU/network warnings can take priority over normal OLED pages until the warning clears. The `WARNING` header blinks while active. Each check can be enabled independently in `[Warnings]`.
 - **Configurable data sources.** Choose mountpoints and network interfaces in `rockpi-penta.conf`; `interfaces = auto` selects all interfaces except loopback.
@@ -31,7 +31,9 @@ The thresholds and curve mode are configured in `/etc/rockpi-penta.conf`. By def
 
 Set `linear = true` in `[fan]` to instead ramp continuously from 25% at `lv0` to 100% at `lv3`. In this mode, `lv1` and `lv2` do not affect the curve. Below `lv0`, the fan remains off in either mode.
 
-With drive temperature control enabled, tune these thresholds for the disks and cooling setup. If SMART data is unavailable, the controller uses CPU temperature instead.
+Set `temperature_source = drives` in `[fan]` to control the fan from the hottest available SMART drive temperature. If no drives are connected or no drive SMART temperature is available, it falls back to CPU temperature. Set `temperature_source = cpu` to use CPU temperature only.
+
+Tune the thresholds for the selected temperature source and cooling setup.
 
 ## OLED configuration
 
