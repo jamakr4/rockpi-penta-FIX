@@ -59,14 +59,13 @@ sudo systemctl restart rockpi-penta.service
 
 ## Build and install
 
-From the repository root, build the Debian package and install it with:
+From the repository root, build and install the Debian package together with `smartmontools`:
 
-```sh
-dpkg-deb --build rockpi-penta
-sudo apt install ./rockpi-penta.deb
+```bash
+sudo ./install.sh
 ```
 
-The package depends on Python 3, libgpiod, and Pillow. `smartmontools` is recommended for disk temperature readings.
+The installer rebuilds `rockpi-penta.deb` from the checked-out files, then installs it and `smartmontools` through apt. The package also declares `smartmontools` as a recommendation, so apt installs it in the usual case even without the script. The package depends on Python 3, libgpiod, and Pillow.
 
 ## Scope
 
