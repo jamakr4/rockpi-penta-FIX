@@ -47,8 +47,15 @@ class Pwm:
 
 class Gpio:
     def __init__(self, period_s):
-        self.line = gpiod.Chip(os.environ['FAN_CHIP']).get_line(int(os.environ['FAN_LINE']))
-        self.line.request(consumer='fan', type=gpiod.LINE_REQ_DIR_OUT)
+        self.line_num = int(os.environ['FAN_LINE'])
+        chip_path = f"/dev/gpiochip{os.environ['FAN_CHIP']}"
+        self.request = gpiod.request_lines(
+            chip_path,
+            consumer='fan',
+            config={self.line_num: gpiod.LineSettings(
+                direction=gpiod.line.Direction.OUTPUT
+            )},
+        )
         self.duty = 0.0
         self.period_s = period_s
         self.thread = threading.Thread(target=self.tr, daemon=True)
@@ -58,12 +65,12 @@ class Gpio:
         while True:
             duty = self.duty
             if duty <= 0.001:
-                self.line.set_value(0)
+                self.request.set_value(self.line_num, gpiod.line.Value.INACTIVE)
                 time.sleep(self.period_s)
                 continue
-            self.line.set_value(1)
+            self.request.set_value(self.line_num, gpiod.line.Value.ACTIVE)
             time.sleep(duty * self.period_s)
-            self.line.set_value(0)
+            self.request.set_value(self.line_num, gpiod.line.Value.INACTIVE)
             time.sleep((1.0 - duty) * self.period_s)
 
     def write(self, duty):
@@ -71,6 +78,11 @@ class Gpio:
 
 
 def read_temp():
+    # Use the hottest detected drive temperature, falling back to CPU temp
+    # when SMART data is unavailable.
+    disk_temps = misc.get_disk_temperatures(force=True)
+    if disk_temps:
+        return max(temp for _, temp in disk_temps)
     with open('/sys/class/thermal/thermal_zone0/temp') as f:
         t = int(f.read().strip()) / 1000.0
     return t

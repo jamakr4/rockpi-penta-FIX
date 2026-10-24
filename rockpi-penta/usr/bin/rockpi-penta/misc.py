@@ -115,21 +115,22 @@ def _split_list(value):
 
 
 def read_key(pattern, size):
-    CHIP_NAME = os.environ['BUTTON_CHIP']
-    LINE_NUMBER = os.environ['BUTTON_LINE']
-
+    line_number = int(os.environ['BUTTON_LINE'])
+    chip_path = f"/dev/gpiochip{os.environ['BUTTON_CHIP']}"
     s = ''
-    chip = gpiod.Chip(str(CHIP_NAME))
-    line = chip.get_line(int(LINE_NUMBER))
-    line.request(consumer='hat_button', type=gpiod.LINE_REQ_DIR_OUT)
-    line.set_value(1)
-
-    while True:
-        s = s[-size:] + str(line.get_value())
-        for t, p in pattern.items():
-            if p.match(s):
-                return t
-        time.sleep(0.1)
+    with gpiod.request_lines(
+        chip_path,
+        consumer='hat_button',
+        config={line_number: gpiod.LineSettings(
+            direction=gpiod.line.Direction.INPUT
+        )},
+    ) as request:
+        while True:
+            s = s[-size:] + str(request.get_value(line_number).value)
+            for t, p in pattern.items():
+                if p.match(s):
+                    return t
+            time.sleep(0.1)
 
 
 def watch_key(q=None):
@@ -240,9 +241,9 @@ def get_io_rates():
     return rates
 
 
-def get_disk_temperatures():
+def get_disk_temperatures(force=False):
     """Read temperatures from detected block devices when smartctl is available."""
-    if not conf['disk']['disks_temp']:
+    if not conf['disk']['disks_temp'] and not force:
         return []
     if time.time() - _temp_cache.get('time', 0) < 30:
         return _temp_cache.get('temperatures', [])
