@@ -58,50 +58,68 @@ def goodbye():
 
 def put_disk_info():
     k, v = misc.get_disk_info()
-    text1 = 'Disk: {} {}'.format(k[0], v[0])
-
-    if len(k) == 5:
-        text2 = '{} {}  {} {}'.format(k[1], v[1], k[2], v[2])
-        text3 = '{} {}  {} {}'.format(k[3], v[3], k[4], v[4])
-        page = [
-            {'xy': (0, -2), 'text': text1, 'fill': 255, 'font': font['11']},
-            {'xy': (0, 10), 'text': text2, 'fill': 255, 'font': font['11']},
-            {'xy': (0, 21), 'text': text3, 'fill': 255, 'font': font['11']},
-        ]
-    elif len(k) == 3:
-        text2 = '{} {}  {} {}'.format(k[1], v[1], k[2], v[2])
-        page = [
-            {'xy': (0, 2), 'text': text1, 'fill': 255, 'font': font['12']},
-            {'xy': (0, 18), 'text': text2, 'fill': 255, 'font': font['12']},
-        ]
-    else:
-        page = [{'xy': (0, 2), 'text': text1, 'fill': 255, 'font': font['14']}]
-
-    return page
+    entries = ['{} {}'.format(name, used) for name, used in zip(k, v)]
+    rows = ['  '.join(entries[i:i + 2]) for i in range(0, len(entries), 2)]
+    if not rows:
+        rows = ['No mounted disks']
+    return [
+        {'xy': (0, -2), 'text': 'Disk usage', 'fill': 255, 'font': font['11']},
+        {'xy': (0, 10), 'text': rows[0][:21], 'fill': 255, 'font': font['11']},
+        {'xy': (0, 21), 'text': (rows[1] if len(rows) > 1 else '')[:21], 'fill': 255, 'font': font['11']},
+    ]
 
 
 def gen_pages():
-    pages = {
-        0: [
+    pages = [
+        [
             {'xy': (0, -2), 'text': misc.get_info('up'), 'fill': 255, 'font': font['11']},
             {'xy': (0, 10), 'text': misc.get_cpu_temp(), 'fill': 255, 'font': font['11']},
             {'xy': (0, 21), 'text': misc.get_info('ip'), 'fill': 255, 'font': font['11']},
         ],
-        1: [
+        [
             {'xy': (0, 2), 'text': misc.get_info('cpu'), 'fill': 255, 'font': font['12']},
             {'xy': (0, 18), 'text': misc.get_info('men'), 'fill': 255, 'font': font['12']},
         ],
-        2: put_disk_info()
-    }
+        put_disk_info(),
+    ]
+
+    rates = misc.get_io_rates()
+    for mountpoint in misc.conf['disk']['io_usage_mnt_points']:
+        read, write = rates['disks'].get(mountpoint, (0.0, 0.0))
+        label = os.path.basename(misc._mount_source(mountpoint)) or mountpoint
+        pages.append([
+            {'xy': (0, -2), 'text': 'Disk I/O: {}'.format(label)[:21], 'fill': 255, 'font': font['11']},
+            {'xy': (0, 10), 'text': 'Read:  {:8.3f} MB/s'.format(read), 'fill': 255, 'font': font['11']},
+            {'xy': (0, 21), 'text': 'Write: {:8.3f} MB/s'.format(write), 'fill': 255, 'font': font['11']},
+        ])
+
+    for interface in misc.get_interface_list():
+        rx, tx = rates['network'].get(interface, (0.0, 0.0))
+        pages.append([
+            {'xy': (0, -2), 'text': 'Network I/O: {}'.format(interface)[:21], 'fill': 255, 'font': font['11']},
+            {'xy': (0, 10), 'text': 'Rx:    {:8.3f} MB/s'.format(rx), 'fill': 255, 'font': font['11']},
+            {'xy': (0, 21), 'text': 'Tx:    {:8.3f} MB/s'.format(tx), 'fill': 255, 'font': font['11']},
+        ])
+
+    temperatures = misc.get_disk_temperatures()
+    if temperatures:
+        rows = ['{} {}°C'.format(name, temp) for name, temp in temperatures]
+        pages.append([
+            {'xy': (0, -2), 'text': 'Disk temperatures', 'fill': 255, 'font': font['11']},
+            {'xy': (0, 10), 'text': '  '.join(rows[:2])[:21], 'fill': 255, 'font': font['11']},
+            {'xy': (0, 21), 'text': '  '.join(rows[2:4])[:21], 'fill': 255, 'font': font['11']},
+        ])
 
     return pages
 
 
 def slider(lock):
     with lock:
-        for item in misc.slider_next(gen_pages()):
+        pages = gen_pages()
+        for item in pages[misc.conf['idx'].value % len(pages)]:
             draw.text(**item)
         disp_show()
+        misc.conf['idx'].value += 1
 
 
 def auto_slider(lock):

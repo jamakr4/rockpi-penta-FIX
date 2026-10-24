@@ -5,6 +5,8 @@ import time
 import subprocess
 import multiprocessing as mp
 import traceback
+import json
+import shlex
 
 import gpiod
 from configparser import ConfigParser
@@ -32,7 +34,7 @@ def check_call(cmd):
 
 
 def get_blk():
-    conf['disk'] = [x for x in check_output(cmds['blk']).strip().split('\n') if x.startswith('sd')]
+    conf['disk_devices'] = [x for x in check_output(cmds['blk']).strip().split('\n') if x.startswith('sd')]
 
 
 def get_info(s):
@@ -71,6 +73,14 @@ def read_conf():
         conf['slider']['time'] = cfg.getfloat('slider', 'time')
         conf['oled']['rotate'] = cfg.getboolean('oled', 'rotate')
         conf['oled']['f-temp'] = cfg.getboolean('oled', 'f-temp')
+        # Optional OLED sources. Empty lists disable the corresponding pages.
+        conf['disk']['space_usage_mnt_points'] = _split_list(
+            cfg.get('disk', 'space_usage_mnt_points', fallback='/'))
+        conf['disk']['io_usage_mnt_points'] = _split_list(
+            cfg.get('disk', 'io_usage_mnt_points', fallback=''))
+        conf['disk']['disks_temp'] = cfg.getboolean('disk', 'disks_temp', fallback=True)
+        conf['network']['interfaces'] = _split_list(
+            cfg.get('network', 'interfaces', fallback='auto'))
     except Exception:
         traceback.print_exc()
         # fan
@@ -90,8 +100,16 @@ def read_conf():
         conf['slider']['time'] = 10  # second
         conf['oled']['rotate'] = False
         conf['oled']['f-temp'] = False
+        conf['disk']['space_usage_mnt_points'] = ['/']
+        conf['disk']['io_usage_mnt_points'] = []
+        conf['disk']['disks_temp'] = True
+        conf['network']['interfaces'] = ['auto']
 
     return conf
+
+
+def _split_list(value):
+    return [item.strip() for item in value.split('|') if item.strip()]
 
 
 def read_key(pattern, size):
@@ -127,16 +145,132 @@ def watch_key(q=None):
 
 def get_disk_info(cache={}):
     if not cache.get('time') or time.time() - cache['time'] > 30:
-        info = {}
-        cmd = "df -h | awk '$NF==\"/\"{printf \"%s\", $5}'"
-        info['root'] = check_output(cmd)
-        for x in conf['disk']:
-            cmd = "df -Bg | awk '$1==\"/dev/{}\" {{printf \"%s\", $5}}'".format(x)
-            info[x] = check_output(cmd)
-        cache['info'] = list(zip(*info.items()))
+        info = []
+        for mountpoint in conf['disk']['space_usage_mnt_points']:
+            try:
+                result = subprocess.run(['df', '-hP', mountpoint], check=True,
+                                        capture_output=True, text=True, timeout=5)
+                fields = result.stdout.splitlines()[-1].split()
+                label = os.path.basename(fields[-1].rstrip('/')) or '/'
+                info.append((label[:7], fields[4]))
+            except (OSError, subprocess.SubprocessError, IndexError):
+                continue
+        cache['info'] = ([item[0] for item in info], [item[1] for item in info])
         cache['time'] = time.time()
 
     return cache['info']
+
+
+def _mount_source(mountpoint):
+    try:
+        return check_output("findmnt -nro SOURCE --target " + shlex.quote(mountpoint)).splitlines()[0]
+    except (subprocess.CalledProcessError, IndexError):
+        return ''
+
+
+def _disk_counters():
+    counters = {}
+    try:
+        with open('/proc/diskstats') as stats:
+            for line in stats:
+                fields = line.split()
+                if len(fields) >= 14:
+                    counters[fields[2]] = (int(fields[5]), int(fields[9]))
+    except OSError:
+        pass
+    return counters
+
+
+def _network_counters():
+    counters = {}
+    try:
+        with open('/proc/net/dev') as stats:
+            for line in stats:
+                if ':' not in line:
+                    continue
+                interface, values = line.split(':', 1)
+                values = values.split()
+                if len(values) >= 9:
+                    counters[interface.strip()] = (int(values[0]), int(values[8]))
+    except OSError:
+        pass
+    return counters
+
+
+def get_interface_list():
+    configured = conf['network']['interfaces']
+    available = sorted(_network_counters())
+    if configured == ['auto']:
+        return [name for name in available if name != 'lo']
+    return [name for name in configured if name in available]
+
+
+def get_io_rates():
+    """Return current per-mount and per-interface rates in MiB/s."""
+    now = time.time()
+    snapshot = {'time': now, 'disks': {}, 'network': {}}
+    disk_counts = _disk_counters()
+    for mountpoint in conf['disk']['io_usage_mnt_points']:
+        source = _mount_source(mountpoint)
+        device = os.path.basename(source)
+        if device in disk_counts:
+            snapshot['disks'][mountpoint] = (device, disk_counts[device])
+    network_counts = _network_counters()
+    for interface in get_interface_list():
+        if interface in network_counts:
+            snapshot['network'][interface] = network_counts[interface]
+
+    previous = _io_cache.get('snapshot')
+    rates = {'disks': {}, 'network': {}}
+    if previous:
+        elapsed = max(now - previous['time'], 0.001)
+        for mountpoint, (device, values) in snapshot['disks'].items():
+            old = previous['disks'].get(mountpoint)
+            if old and old[0] == device:
+                rates['disks'][mountpoint] = tuple(
+                    max(0, value - old[1][i]) * 512 / elapsed / 1048576 for i, value in enumerate(values))
+        for interface, values in snapshot['network'].items():
+            old = previous['network'].get(interface)
+            if old:
+                rates['network'][interface] = tuple(
+                    max(0, value - old[i]) / elapsed / 1048576 for i, value in enumerate(values))
+    _io_cache['snapshot'] = snapshot
+    return rates
+
+
+def get_disk_temperatures():
+    """Read temperatures from detected block devices when smartctl is available."""
+    if not conf['disk']['disks_temp']:
+        return []
+    if time.time() - _temp_cache.get('time', 0) < 30:
+        return _temp_cache.get('temperatures', [])
+    try:
+        devices = check_output("lsblk -dnpo NAME,TYPE | awk '$2==\"disk\"{print $1}'").splitlines()
+    except subprocess.CalledProcessError:
+        return []
+    temperatures = []
+    for device in devices:
+        try:
+            result = subprocess.run(['smartctl', '-A', '-j', device], check=False,
+                                    capture_output=True, text=True, timeout=5)
+            data = json.loads(result.stdout)
+            temp = data.get('temperature', {}).get('current')
+            if temp is None:
+                for attr in data.get('ata_smart_attributes', {}).get('table', []):
+                    if attr.get('name') in ('Temperature_Celsius', 'Airflow_Temperature_Cel'):
+                        temp = attr.get('raw', {}).get('value')
+                        break
+            if temp is not None:
+                temperatures.append((os.path.basename(device), float(temp)))
+        except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
+            continue
+    _temp_cache['time'] = time.time()
+    _temp_cache['temperatures'] = temperatures
+    return temperatures
+
+
+_io_cache = {}
+_temp_cache = {}
 
 
 def slider_next(pages):
