@@ -7,6 +7,7 @@ import multiprocessing as mp
 import traceback
 import json
 import shlex
+import shutil
 
 import gpiod
 from configparser import ConfigParser
@@ -91,6 +92,19 @@ def read_conf():
         conf['warnings']['disk_temp_limit'] = cfg.getfloat('Warnings', 'disk_temp_limit', fallback=55.0)
         conf['warnings']['cpu_temperature'] = cfg.getboolean('Warnings', 'cpu_temperature', fallback=False)
         conf['warnings']['cpu_temp_limit'] = cfg.getfloat('Warnings', 'cpu_temp_limit', fallback=85.0)
+        conf['warnings']['mount_missing'] = cfg.getboolean('Warnings', 'mount_missing', fallback=True)
+        conf['warnings']['disk_usage'] = cfg.getboolean('Warnings', 'disk_usage', fallback=True)
+        conf['warnings']['disk_usage_limit'] = cfg.getfloat('Warnings', 'disk_usage_limit', fallback=90.0)
+        conf['warnings']['raid_degraded'] = cfg.getboolean('Warnings', 'raid_degraded', fallback=True)
+        conf['warnings']['network_interfaces'] = _split_list(
+            cfg.get('Warnings', 'network_interfaces', fallback=''))
+        conf['warnings']['network_link'] = cfg.getboolean('Warnings', 'network_link', fallback=False)
+        conf['warnings']['network_low_speed'] = cfg.getboolean('Warnings', 'network_low_speed', fallback=False)
+        conf['warnings']['network_min_speed_mbps'] = cfg.getint('Warnings', 'network_min_speed_mbps', fallback=100)
+        conf['warnings']['network_latency'] = cfg.getboolean('Warnings', 'network_latency', fallback=False)
+        conf['warnings']['network_target'] = cfg.get('Warnings', 'network_target', fallback='1.1.1.1').strip()
+        conf['warnings']['network_latency_limit_ms'] = cfg.getfloat(
+            'Warnings', 'network_latency_limit_ms', fallback=100.0)
     except Exception:
         traceback.print_exc()
         # fan
@@ -123,6 +137,17 @@ def read_conf():
         conf['warnings']['disk_temp_limit'] = 55.0
         conf['warnings']['cpu_temperature'] = False
         conf['warnings']['cpu_temp_limit'] = 85.0
+        conf['warnings']['mount_missing'] = True
+        conf['warnings']['disk_usage'] = True
+        conf['warnings']['disk_usage_limit'] = 90.0
+        conf['warnings']['raid_degraded'] = True
+        conf['warnings']['network_interfaces'] = []
+        conf['warnings']['network_link'] = False
+        conf['warnings']['network_low_speed'] = False
+        conf['warnings']['network_min_speed_mbps'] = 100
+        conf['warnings']['network_latency'] = False
+        conf['warnings']['network_target'] = '1.1.1.1'
+        conf['warnings']['network_latency_limit_ms'] = 100.0
 
     return conf
 
@@ -354,11 +379,119 @@ def get_warnings():
         except (OSError, ValueError):
             pass
 
+    mountpoints = conf['disk']['space_usage_mnt_points']
+    if options.get('mount_missing', True):
+        for mountpoint in mountpoints:
+            if not os.path.ismount(mountpoint):
+                warnings.append(f'Mount missing: {os.path.basename(mountpoint.rstrip("/")) or "/"}')
+
+    if options.get('disk_usage', True):
+        limit = options.get('disk_usage_limit', 90.0)
+        for mountpoint in mountpoints:
+            if not os.path.ismount(mountpoint):
+                continue
+            try:
+                usage = shutil.disk_usage(mountpoint)
+                percent = usage.used * 100.0 / usage.total if usage.total else 0.0
+                if percent >= limit:
+                    label = os.path.basename(mountpoint.rstrip('/')) or '/'
+                    warnings.append(f'{label} full {percent:.0f}% >{limit:.0f}%')
+            except OSError:
+                continue
+
+    if options.get('raid_degraded', True):
+        warnings.extend(_get_raid_warnings())
+
+    monitored_interfaces = options.get('network_interfaces', [])
+    if monitored_interfaces:
+        if options.get('network_link', False) or options.get('network_low_speed', False):
+            for interface in monitored_interfaces:
+                interface_path = os.path.join('/sys/class/net', interface)
+                try:
+                    with open(os.path.join(interface_path, 'operstate')) as state_file:
+                        state = state_file.read().strip()
+                except OSError:
+                    warnings.append(f'{interface} unavailable')
+                    continue
+                if state != 'up':
+                    if options.get('network_link', False) and state == 'down':
+                        warnings.append(f'{interface} link down')
+                    continue
+                if options.get('network_low_speed', False):
+                    try:
+                        with open(os.path.join(interface_path, 'speed')) as speed_file:
+                            speed = int(speed_file.read().strip())
+                        minimum = options.get('network_min_speed_mbps', 100)
+                        if speed > 0 and speed < minimum:
+                            warnings.append(f'{interface} link {speed}Mbps <{minimum}')
+                    except (OSError, ValueError):
+                        pass
+
+    if options.get('network_latency', False):
+        target = options.get('network_target', '')
+        if target:
+            latency, reachable = _get_network_latency(target)
+            limit = options.get('network_latency_limit_ms', 100.0)
+            if reachable is False:
+                warnings.append(f'Ping {target} unreachable')
+            elif latency is not None and latency >= limit:
+                warnings.append(f'Latency {latency:.0f}ms >{limit:.0f}ms')
+
     return warnings
+
+
+def _get_raid_warnings():
+    try:
+        with open('/proc/mdstat') as mdstat:
+            lines = mdstat.readlines()
+    except OSError:
+        return []
+
+    warnings = []
+    for index, line in enumerate(lines):
+        match = re.match(r'^(md\d+)\s*:\s*(.*)', line)
+        if not match:
+            continue
+        array_name, status = match.groups()
+        block = [status]
+        for following in lines[index + 1:index + 4]:
+            if re.match(r'^md\d+\s*:', following):
+                break
+            block.append(following)
+        array_status = ' '.join(block)
+        if 'inactive' in status:
+            warnings.append(f'{array_name} RAID inactive')
+            continue
+        counts = re.search(r'\[(\d+)/(\d+)\]\s+\[([U_]+)\]', array_status)
+        if counts and (counts.group(1) != counts.group(2) or '_' in counts.group(3)):
+            warnings.append(f'{array_name} RAID degraded')
+    return warnings
+
+
+def _get_network_latency(target):
+    now = time.time()
+    cached = _latency_cache.get(target)
+    if cached and now - cached['time'] < 10:
+        return cached['latency'], cached['reachable']
+    try:
+        result = subprocess.run(['ping', '-n', '-c', '1', '-W', '1', target],
+                                capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    match = re.search(r'time[=<]\s*([\d.]+)\s*ms', result.stdout)
+    if match:
+        latency, reachable = float(match.group(1)), True
+    elif result.returncode != 0:
+        latency, reachable = None, False
+    else:
+        latency, reachable = None, None
+    _latency_cache[target] = {'time': now, 'latency': latency, 'reachable': reachable}
+    return latency, reachable
 
 
 _io_cache = {}
 _smart_cache = {}
+_latency_cache = {}
 
 
 def slider_next(pages):

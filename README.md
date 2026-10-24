@@ -13,7 +13,7 @@ For hardware information, see the [Radxa Penta SATA HAT documentation](https://d
 - **Debian Trixie / Raspberry Pi 5 GPIO support.** Fan output and button input use the `gpiod` v2 API.
 - **Drive temperature fan control.** When SMART temperatures are available, the fan follows the hottest detected disk temperature. It falls back to CPU temperature when no disk temperature is available. The package recommends `smartmontools` for this feature.
 - **More OLED pages.** The display can show configured mountpoint usage, disk read/write rates, network receive/transmit rates, and detected disk temperatures, alongside the existing system information.
-- **Persistent warning page.** Failed SMART health, reallocated/pending/uncorrectable sectors, NVMe critical warnings or media errors, and configurable disk or CPU temperature limits can take priority over normal OLED pages until the warning clears. The `WARNING` header blinks while active. Each check can be enabled independently in `[Warnings]`.
+- **Persistent warning page.** Failed SMART health, reallocated/pending/uncorrectable sectors, NVMe critical warnings or media errors, hot drives, full or missing mounts, degraded Linux RAID, and optional CPU/network warnings can take priority over normal OLED pages until the warning clears. The `WARNING` header blinks while active. Each check can be enabled independently in `[Warnings]`.
 - **Configurable data sources.** Choose mountpoints and network interfaces in `rockpi-penta.conf`; `interfaces = auto` selects all interfaces except loopback.
 - **Independent OLED updates.** Separate timer processes request automatic page changes and periodic data refreshes. One display worker serializes OLED writes to avoid overlapping I²C access. Set the refresh interval with `slider.refresh`.
 
@@ -68,9 +68,20 @@ disk_temperature = true
 disk_temp_limit = 55
 cpu_temperature = false
 cpu_temp_limit = 85
+mount_missing = true
+disk_usage = true
+disk_usage_limit = 90
+raid_degraded = true
+network_interfaces = eth0
+network_link = false
+network_low_speed = false
+network_min_speed_mbps = 100
+network_latency = false
+network_target = 1.1.1.1
+network_latency_limit_ms = 100
 ```
 
-When enabled, the warning page stays visible until all active conditions clear. SMART and disk temperature warnings require supported drives and `smartmontools`.
+When enabled, the warning page stays visible until all active conditions clear. SMART and disk temperature warnings require supported drives and `smartmontools`. Network link and negotiated-speed checks apply to the listed interfaces. Latency checks ping the configured target, so choose a stable local gateway if you want to avoid dependence on an external host. The installer installs `iputils-ping` for this check.
 
 Apply changes with:
 
@@ -94,13 +105,13 @@ sudo systemctl status rockpi-penta.service
 
 ## Build and install
 
-From the repository root, build and install the Debian package together with `smartmontools`:
+From the repository root, build and install the Debian package together with `smartmontools` and `iputils-ping`:
 
 ```bash
 sudo ./install.sh
 ```
 
-The installer rebuilds `rockpi-penta.deb` from the checked-out files, then installs it and `smartmontools` through apt. The package also declares `smartmontools` as a recommendation, so apt installs it in the usual case even without the script. The package depends on Python 3, libgpiod, and Pillow.
+The installer rebuilds `rockpi-penta.deb` from the checked-out files, then installs it, `smartmontools`, and `iputils-ping` through apt. The package also recommends both tools, so apt can install them in the usual case even without the script. The package depends on Python 3, libgpiod, and Pillow.
 
 ## Scope
 

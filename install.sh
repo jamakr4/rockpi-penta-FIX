@@ -18,6 +18,6 @@ if ! command -v dpkg-deb >/dev/null 2>&1; then
 fi
 
 dpkg-deb --build "$SCRIPT_DIR/rockpi-penta" "$PACKAGE_FILE"
-apt-get install --reinstall -y smartmontools "$PACKAGE_FILE"
+apt-get install --reinstall -y smartmontools iputils-ping "$PACKAGE_FILE"
 
-echo "rockpi-penta and smartmontools are installed."
+echo "rockpi-penta, smartmontools, and iputils-ping are installed."
